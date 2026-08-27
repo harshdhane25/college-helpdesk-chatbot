@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Helpdesk Chatbot</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-light: #818cf8;
+            --primary-dark: #3730a3;
+            --bg: #f8fafc;
+            --sidebar-bg: #ffffff;
+            --chat-bg: #ffffff;
+            --text-primary: #1e293b;
+            --text-secondary: #475569;
+            --user-bubble-bg: #4f46e5;
+            --user-bubble-text: #ffffff;
+            --bot-bubble-bg: #f1f5f9;
+            --bot-bubble-text: #1e293b;
+            --border: #e2e8f0;
+            --shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            --radius: 12px;
+            --transition: all 0.2s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        .header {
+            background: var(--primary);
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-logo {
+            font-size: 28px;
+            line-height: 1;
+        }
+
+        .header-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+        }
+
+        .header-subtitle {
+            font-size: 0.85rem;
+            opacity: 0.9;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 6px 12px;
+            border-radius: 20px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #4ade80;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Main layout */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .new-chat-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: var(--radius);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .new-chat-btn:hover {
+            background: var(--primary-dark);
+        }
+
+        .sidebar-section {
+            background: #f8fafc;
+            border-radius: var(--radius);
+            padding: 15px;
+        }
+
+        .sidebar-section h3 {
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .capability-list {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .capability-tag {
+            background: white;
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            cursor: default;
+            transition: var(--transition);
+        }
+
+        .capability-tag:hover {
+            background: #eef2ff;
+            border-color: var(--primary-light);
+        }
+
+        .sidebar-info {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* Chat area */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--chat-bg);
+            max-width: 100%;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            max-width: 75%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            line-height: 1.5;
+            font-size: 0.95rem;
+            word-wrap: break-word;
+            position: relative;
+            box-shadow: var(--shadow);
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: var(--user-bubble-bg);
+            color: var(--user-bubble-text);
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.bot {
+            align-self: flex-start;
+            background: var(--bot-bubble-bg);
+            color: var(--bot-bubble-text);
+            border-bottom-left-radius: 4px;
+        }
+
+        .message .timestamp {
+            display: block;
+            font-size: 0.7rem;
+            margin-top: 6px;
+            opacity: 0.7;
+            text-align: right;
+        }
+
+        .typing-indicator {
+            align-self: flex-start;
+            background: var(--bot-bubble-bg);
+            border-radius: 18px;
+            border-bottom-left-radius: 4px;
+            padding: 12px 16px;
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--text-secondary);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+
+        .welcome-container {
+            text-align: center;
+            padding: 30px 20px;
+        }
+
+        .welcome-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+
+        .welcome-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .welcome-text {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .suggestion-btn {
+            background: #eef2ff;
+            border: 1px solid #c7d2fe;
+            color: var(--primary);
+            padding: 10px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: var(--transition);
+        }
+
+        .suggestion-btn:hover {
+            background: #e0e7ff;
+            border-color: var(--primary-light);
+        }
+
+        /* Input area */
+        .input-area {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+            background: white;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            font-size: 0.95rem;
+            resize: none;
+            outline: none;
+            transition: var(--transition);
+            max-height: 120px;
+            min-height: 44px;
+            font-family: inherit;
+        }
+
+        .chat-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        .send-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            background: var(--primary-dark);
+        }
+
+        .send-btn:disabled {
+            background: #cbd5e1;
+            cursor: not-allowed;
+        }
+
+        .disclaimer {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            .sidebar {
+                width: 100%;
+                flex-direction: row;
+                flex-wrap: wrap;
+                align-items: center;
+                padding: 10px;
+                gap: 10px;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+                max-height: 120px;
+                overflow-y: auto;
+            }
+            .new-chat-btn {
+                padding: 8px 12px;
+                font-size: 0.9rem;
+            }
+            .sidebar-section {
+                display: none; /* Hide capabilities on mobile */
+            }
+            .sidebar-info {
+                display: none;
+            }
+            .header-title {
+                font-size: 1.2rem;
+            }
+            .message {
+                max-width: 90%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <span class="header-logo">🎓</span>
+            <div>
+                <div class="header-title">College Helpdesk</div>
+                <div class="header-subtitle">AI Student Support Assistant</div>
+            </div>
+        </div>
+        <div class="status-indicator" aria-label="Online">
+            <span class="status-dot"></span>
+            Online
+        </div>
+    </header>
+
+    <div class="main-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" aria-label="Chat options">
+            <button class="new-chat-btn" id="newChatBtn" aria-label="Start new chat">
+                <span>+</span> New Chat
+            </button>
+            <div class="sidebar-section">
+                <h3>What I can help with</h3>
+                <ul class="capability-list">
+                    <li class="capability-tag">Academic</li>
+                    <li class="capability-tag">Exams</li>
+                    <li class="capability-tag">Fees</li>
+                    <li class="capability-tag">Scholarships</li>
+                    <li class="capability-tag">Administration</li>
+                    <li class="capability-tag">Library</li>
+                    <li class="capability-tag">Hostel</li>
+                    <li class="capability-tag">Placements</li>
+                </ul>
+            </div>
+            <div class="sidebar-info">
+                <p>I can assist with general college helpdesk queries. For specific details, please contact the respective college office.</p>
+            </div>
+        </aside>
+
+        <!-- Chat area -->
+        <main class="chat-area">
+            <div class="messages-container" id="messagesContainer" aria-live="polite">
+                <!-- Welcome message and suggestions are inserted here by JS on load -->
+            </div>
+            <div class="input-area">
+                <div class="input-row">
+                    <textarea id="chatInput" class="chat-input" rows="1" placeholder="Type your question here..." aria-label="Message input"></textarea>
+                    <button id="sendBtn" class="send-btn" aria-label="Send message">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+                <div class="disclaimer">AI-generated responses may require confirmation from the college office.</div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        (function() {
+            // DOM elements
+            const messagesContainer = document.getElementById('messagesContainer');
+            const chatInput = document.getElementById('chatInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const newChatBtn = document.getElementById('newChatBtn');
+
+            // Conversation history for context (limited)
+            let conversationHistory = [];
+
+            // Welcome message text
+            const WELCOME_MESSAGE = `Hello! 👋 I'm CollegeAssist, your College Helpdesk Assistant.\n\nI can help you with academic, examination, fee, administrative, library, hostel, scholarship and placement-related questions.\n\nHow can I help you today?`;
+
+            // Suggested question buttons
+            const SUGGESTIONS = [
+                "How can I apply for a bonafide certificate?",
+                "What documents are generally required for admission?",
+                "How is my final fee calculated?",
+                "What should I do if I have an attendance shortage?",
+                "How can I contact the examination department?"
+            ];
+
+            // Helper: scroll to bottom
+            function scrollToBottom() {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+
+            // Helper: get current timestamp
+            function getTime() {
+                const now = new Date();
+                return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+
+            // Helper: create message element
+            function createMessageElement(role, content) {
+                const div = document.createElement('div');
+                div.classList.add('message', role);
+                if (role === 'bot') {
+                    div.innerHTML = renderMarkdown(content); // safe rendering
+                } else {
+                    div.textContent = content;
+                }
+                const timeSpan = document.createElement('span');
+                timeSpan.classList.add('timestamp');
+                timeSpan.textContent = getTime();
+                div.appendChild(timeSpan);
+                return div;
+            }
+
+            // ---------- Improved Markdown Renderer ----------
+            function escapeHtml(text) {
+                const map = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                };
+                return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+            }
+
+            // Inline markdown: bold, italic, inline code
+            function processInline(text) {
+                // Inline code first (to avoid formatting inside)
+                text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+                // Bold
+                text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+                text = text.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+                // Italic
+                text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+                text = text.replace(/_([^_]+)_/g, '<em>$1</em>');
+                return text;
+            }
+
+            // Detect if a line is a table separator (e.g., |---|---|)
+            function isTableSeparator(line) {
+                return /^\s*\|?[\s:|-]+\|?\s*$/.test(line) && line.includes('-');
+            }
+
+            // Parse a Markdown table starting at index i in lines
+            function parseTable(lines, startIndex) {
+                // Assuming lines[startIndex] is header row
+                const headerLine = lines[startIndex].trim();
+                if (!headerLine.startsWith('|') && !headerLine.endsWith('|')) return null;
+
+                const headers = headerLine.split('|').slice(1, -1).map(cell => cell.trim());
+                const rows = [];
+                let i = startIndex + 1;
+                // Expect separator line
+                if (i < lines.length && isTableSeparator(lines[i])) {
+                    i++; // skip separator
+                } else {
+                    return null; // not a valid table
+                }
+                // Collect data rows until non-table line
+                while (i < lines.length && lines[i].trim().startsWith('|')) {
+                    const rowLine = lines[i].trim();
+                    const cells = rowLine.split('|').slice(1, -1).map(cell => cell.trim());
+                    if (cells.length === headers.length) {
+                        rows.push(cells);
+                    }
+                    i++;
+                }
+                // Build HTML table
+                let html = '<table><thead><tr>';
+                headers.forEach(h => {
+                    html += `<th>${processInline(h)}</th>`;
+                });
+                html += '</tr></thead><tbody>';
+                rows.forEach(row => {
+                    html += '<tr>';
+                    row.forEach(cell => {
+                        html += `<td>${processInline(cell)}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                return { html, endIndex: i };
+            }
+
+            function renderMarkdown(md) {
+                // Escape HTML first
+                const escaped = escapeHtml(md);
+                const lines = escaped.split('\n');
+                let html = '';
+                let i = 0;
+
+                while (i < lines.length) {
+                    const line = lines[i];
+
+                    // Skip empty lines
+                    if (line.trim() === '') {
+                        i++;
+                        continue;
+                    }
+
+                    // Code block (``` ... ```)
+                    if (line.trim().startsWith('```')) {
+                        let code = '';
+                        i++; // skip opening ```
+                        while (i < lines.length && !lines[i].trim().startsWith('```')) {
+                            code += (code ? '\n' : '') + lines[i];
+                            i++;
+                        }
+                        i++; // skip closing ```
+                        html += `<pre><code>${code}</code></pre>`;
+                        continue;
+                    }
+
+                    // Table detection
+                    if (line.trim().startsWith('|') && i + 1 < lines.length && isTableSeparator(lines[i+1])) {
+                        const table = parseTable(lines, i);
+                        if (table) {
+                            html += table.html;
+                            i = table.endIndex;
+                            continue;
+                        }
+                    }
+
+                    // Headings
+                    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+                    if (headingMatch) {
+                        const level = headingMatch[1].length;
+                        const text = headingMatch[2];
+                        html += `<h${level}>${processInline(text)}</h${level}>`;
+                        i++;
+                        continue;
+                    }
+
+                    // Unordered list
+                    if (/^\s*[-*]\s+/.test(line)) {
+                        const items = [];
+                        while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+                            const itemText = lines[i].replace(/^\s*[-*]\s+/, '');
+                            items.push(`<li>${processInline(itemText)}</li>`);
+                            i++;
+                        }
+                        html += `<ul>${items.join('')}</ul>`;
+                        continue;
+                    }
+
+                    // Ordered list
+                    if (/^\s*\d+\.\s+/.test(line)) {
+                        const items = [];
+                        while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+                            const itemText = lines[i].replace(/^\s*\d+\.\s+/, '');
+                            items.push(`<li>${processInline(itemText)}</li>`);
+                            i++;
+                        }
+                        html += `<ol>${items.join('')}</ol>`;
+                        continue;
+                    }
+
+                    // Paragraph: collect consecutive lines until blank line or special block start
+                    const paragraphLines = [];
+                    while (i < lines.length && lines[i].trim() !== '') {
+                        // Stop if next line starts a new block (heading, list, table, code)
+                        if (i > 0 && (
+                            /^\s*[-*]\s+/.test(lines[i]) ||
+                            /^\s*\d+\.\s+/.test(lines[i]) ||
+                            /^#{1,6}\s+/.test(lines[i]) ||
+                            lines[i].trim().startsWith('```') ||
+                            (lines[i].trim().startsWith('|') && i+1 < lines.length && isTableSeparator(lines[i+1]))
+                        )) {
+                            break;
+                        }
+                        paragraphLines.push(lines[i]);
+                        i++;
+                    }
+                    if (paragraphLines.length > 0) {
+                        // Join lines with <br> to preserve line breaks inside paragraph
+                        const content = paragraphLines.map(l => processInline(l)).join('<br>');
+                        html += `<p>${content}</p>`;
+                    }
+                }
+
+                return html;
+            }
+
+            // Helper: add bot message
+            function addBotMessage(content) {
+                const msgDiv = createMessageElement('bot', content);
+                messagesContainer.appendChild(msgDiv);
+                scrollToBottom();
+            }
+
+            // Helper: add user message
+            function addUserMessage(content) {
+                const msgDiv = createMessageElement('user', content);
+                messagesContainer.appendChild(msgDiv);
+                // Update conversation history
+                conversationHistory.push({ role: 'user', content: content });
+                scrollToBottom();
+            }
+
+            // Helper: show typing indicator
+            function showTypingIndicator() {
+                const typingDiv = document.createElement('div');
+                typingDiv.classList.add('typing-indicator');
+                typingDiv.id = 'typingIndicator';
+                typingDiv.innerHTML = `
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                `;
+                messagesContainer.appendChild(typingDiv);
+                scrollToBottom();
+            }
+
+            // Helper: remove typing indicator
+            function removeTypingIndicator() {
+                const typing = document.getElementById('typingIndicator');
+                if (typing) typing.remove();
+            }
+
+            // Helper: disable send button
+            function setSendButtonState(disabled) {
+                sendBtn.disabled = disabled;
+                sendBtn.style.opacity = disabled ? 0.6 : 1;
+            }
+
+            // Helper: display welcome message and suggestions
+            function showWelcome() {
+                // Clear any existing messages
+                messagesContainer.innerHTML = '';
+                // Add welcome bot message
+                addBotMessage(WELCOME_MESSAGE);
+                // Add suggestion buttons container
+                const suggDiv = document.createElement('div');
+                suggDiv.classList.add('suggestions');
+                SUGGESTIONS.forEach(sugg => {
+                    const btn = document.createElement('button');
+                    btn.classList.add('suggestion-btn');
+                    btn.textContent = sugg;
+                    btn.addEventListener('click', () => {
+                        sendMessage(sugg);
+                    });
+                    suggDiv.appendChild(btn);
+                });
+                messagesContainer.appendChild(suggDiv);
+                scrollToBottom();
+            }
+
+            // Send message to backend and handle response
+            async function sendMessage(messageText) {
+                if (!messageText.trim()) return;
+                // Add user message to UI
+                addUserMessage(messageText);
+                // Clear input
+                chatInput.value = '';
+                autoResizeInput();
+                // Disable send button
+                setSendButtonState(true);
+                // Show typing indicator
+                showTypingIndicator();
+
+                // Prepare payload with recent conversation (last 10 messages)
+                const payloadConversation = conversationHistory.slice(-10);
+
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            message: messageText,
+                            conversation: payloadConversation
+                        })
+                    });
+
+                    const data = await response.json();
+                    removeTypingIndicator();
+
+                    if (data.success) {
+                        addBotMessage(data.reply);
+                        // Update conversation history with assistant reply
+                        conversationHistory.push({ role: 'assistant', content: data.reply });
+                        // Keep conversationHistory manageable
+                        if (conversationHistory.length > 20) {
+                            conversationHistory = conversationHistory.slice(-20);
+                        }
+                    } else {
+                        // Show friendly error
+                        const errorMsg = data.error || "Sorry, I couldn't connect to the helpdesk AI right now. Please check your internet connection or try again.";
+                        addBotMessage(errorMsg);
+                    }
+                } catch (error) {
+                    removeTypingIndicator();
+                    addBotMessage("Sorry, I couldn't connect to the helpdesk AI right now. Please check your internet connection or try again.");
+                } finally {
+                    setSendButtonState(false);
+                    chatInput.focus();
+                }
+            }
+
+            // Auto-resize textarea
+            function autoResizeInput() {
+                chatInput.style.height = 'auto';
+                chatInput.style.height = chatInput.scrollHeight + 'px';
+            }
+
+            // Event listeners
+            sendBtn.addEventListener('click', () => {
+                sendMessage(chatInput.value);
+            });
+
+            chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage(chatInput.value);
+                }
+            });
+
+            chatInput.addEventListener('input', autoResizeInput);
+
+            newChatBtn.addEventListener('click', () => {
+                conversationHistory = [];
+                showWelcome();
+                chatInput.focus();
+            });
+
+            // Initialize on page load
+            showWelcome();
+        })();
+    </script>
+</body>
+</html>

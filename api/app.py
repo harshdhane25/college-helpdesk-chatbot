@@ -79,7 +79,7 @@ def call_openrouter(messages, temperature=0.3, max_tokens=800):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://your-app.vercel.app",  # will be updated after deploy
+        "HTTP-Referer": "https://college-helpdesk-chatbot-seven.vercel.app/",  # will be updated after deploy
         "X-Title": "College Helpdesk Chatbot",
     }
     payload = {

@@ -77,11 +77,13 @@ def validate_api_key():
         return False, "OpenRouter API key is missing. Set OPENROUTER_API_KEY in Vercel Environment Variables."
     return True, ""
 
-def call_openrouter(messages, temperature=0.3, max_tokens=800):
+import time
+
+def call_openrouter(messages, temperature=0.3, max_tokens=800, retries=3):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://college-helpdesk-chatbot-rouge.vercel.app",  # will be updated after deploy
+        "HTTP-Referer": "https://college-helpdesk-chatbot-rouge.vercel.app",
         "X-Title": "College Helpdesk Chatbot",
     }
     payload = {
@@ -90,40 +92,54 @@ def call_openrouter(messages, temperature=0.3, max_tokens=800):
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    try:
-        response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=30)
-        if response.status_code != 200:
+
+    for attempt in range(retries):
+        try:
+            response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if "choices" in data and len(data["choices"]) > 0:
+                    reply = data["choices"][0].get("message", {}).get("content")
+                    if reply:
+                        return reply.strip(), None
+                    return None, "The AI returned an empty response."
+                if "error" in data:
+                    return None, data["error"].get("message", "Unknown AI service error")
+                return None, "Unexpected response from AI service."
+
+            # Handle rate limits and server errors with retry
+            if response.status_code in (429, 500, 502, 503, 504):
+                wait = 2 ** attempt  # 1s, 2s, 4s
+                logger.warning(f"Attempt {attempt+1}/{retries} failed with {response.status_code}. Retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+
+            # Other errors (401, 400, etc.) – don't retry
             try:
                 error_data = response.json()
-                error_info = error_data.get("error", {})
-                error_message = error_info.get("message", "Unknown error from OpenRouter")
+                error_message = error_data.get("error", {}).get("message", "Unknown error")
             except Exception:
                 error_message = response.text
-            logger.error("OpenRouter error: %s", error_message)
+            logger.error(f"OpenRouter error: {error_message}")
             if response.status_code == 401:
                 return None, "Invalid OpenRouter API key."
-            if response.status_code == 429:
-                return None, "AI service is busy or rate-limited. Please try again shortly."
-            if response.status_code >= 500:
-                return None, "The AI service is temporarily unavailable. Please try again later."
             return None, f"OpenRouter error: {error_message}"
 
-        data = response.json()
-        if "choices" in data and len(data["choices"]) > 0:
-            reply = data["choices"][0].get("message", {}).get("content")
-            if reply:
-                return reply.strip(), None
-            return None, "The AI returned an empty response."
-        if "error" in data:
-            return None, data["error"].get("message", "Unknown AI service error")
-        return None, "Unexpected response from AI service."
-    except requests.exceptions.Timeout:
-        return None, "The AI service took too long to respond. Please try again."
-    except requests.exceptions.ConnectionError:
-        return None, "Could not connect to the AI service. Check your internet connection."
-    except Exception as e:
-        logger.exception("Unexpected error calling OpenRouter")
-        return None, "Unexpected error occurred."
+        except requests.exceptions.Timeout:
+            if attempt < retries - 1:
+                wait = 2 ** attempt
+                logger.warning(f"Timeout on attempt {attempt+1}. Retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+            return None, "The AI service took too long to respond. Please try again."
+        except requests.exceptions.ConnectionError:
+            return None, "Could not connect to the AI service. Check your internet connection."
+        except Exception as e:
+            logger.exception("Unexpected error calling OpenRouter")
+            return None, "Unexpected error occurred."
+
+    return None, "The AI service is currently busy. Please try again later."
 
 @app.route("/api/chat", methods=["POST"])
 def chat():

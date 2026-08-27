@@ -3,7 +3,9 @@ from flask_cors import CORS
 import requests
 import os
 import logging
+import time
 from dotenv import load_dotenv
+
 load_dotenv()
 
 app = Flask(__name__, static_folder=None)
@@ -14,8 +16,22 @@ logger = logging.getLogger(__name__)
 
 # Read from environment variable (set in Vercel dashboard)
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-MODEL = os.environ.get("MODEL", "openrouter/free")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# ---------- FALLBACK MODELS (hardcoded, not from env) ----------
+MODELS = [
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "inclusionai/ling-3.0-flash:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-nano-9b-v2:free",
+    "poolside/laguna-s-2.1:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",   # duplicate, but kept as provided
+]
+
+# (Optional) default MODEL if you still want to use env – but we'll use the list exclusively
+# MODEL = os.environ.get("MODEL", "openrouter/free")   # no longer used
 
 SYSTEM_PROMPT = """
 You are CollegeAssist, an AI-powered College Helpdesk Assistant.
@@ -77,69 +93,88 @@ def validate_api_key():
         return False, "OpenRouter API key is missing. Set OPENROUTER_API_KEY in Vercel Environment Variables."
     return True, ""
 
-import time
-
-def call_openrouter(messages, temperature=0.3, max_tokens=800, retries=3):
+def call_openrouter(messages, temperature=0.3, max_tokens=800, retries=2):
+    """
+    Tries each model in MODELS list in order.
+    For each model, it attempts up to `retries` times (with exponential backoff)
+    before moving to the next model.
+    Returns (reply, None) on success, or (None, error_message) if all fail.
+    """
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://college-helpdesk-chatbot-rouge.vercel.app",
         "X-Title": "College Helpdesk Chatbot",
     }
-    payload = {
-        "model": MODEL,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
 
-    for attempt in range(retries):
-        try:
-            response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if "choices" in data and len(data["choices"]) > 0:
-                    reply = data["choices"][0].get("message", {}).get("content")
-                    if reply:
-                        return reply.strip(), None
-                    return None, "The AI returned an empty response."
-                if "error" in data:
-                    return None, data["error"].get("message", "Unknown AI service error")
-                return None, "Unexpected response from AI service."
+    last_error = None
 
-            # Handle rate limits and server errors with retry
-            if response.status_code in (429, 500, 502, 503, 504):
-                wait = 2 ** attempt  # 1s, 2s, 4s
-                logger.warning(f"Attempt {attempt+1}/{retries} failed with {response.status_code}. Retrying in {wait}s...")
-                time.sleep(wait)
-                continue
-
-            # Other errors (401, 400, etc.) – don't retry
+    for model in MODELS:
+        logger.info(f"Trying model: {model}")
+        for attempt in range(retries):
             try:
-                error_data = response.json()
-                error_message = error_data.get("error", {}).get("message", "Unknown error")
-            except Exception:
-                error_message = response.text
-            logger.error(f"OpenRouter error: {error_message}")
-            if response.status_code == 401:
-                return None, "Invalid OpenRouter API key."
-            return None, f"OpenRouter error: {error_message}"
+                payload = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                }
+                response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=30)
 
-        except requests.exceptions.Timeout:
-            if attempt < retries - 1:
-                wait = 2 ** attempt
-                logger.warning(f"Timeout on attempt {attempt+1}. Retrying in {wait}s...")
-                time.sleep(wait)
-                continue
-            return None, "The AI service took too long to respond. Please try again."
-        except requests.exceptions.ConnectionError:
-            return None, "Could not connect to the AI service. Check your internet connection."
-        except Exception as e:
-            logger.exception("Unexpected error calling OpenRouter")
-            return None, "Unexpected error occurred."
+                if response.status_code == 200:
+                    data = response.json()
+                    if "choices" in data and len(data["choices"]) > 0:
+                        reply = data["choices"][0].get("message", {}).get("content")
+                        if reply:
+                            return reply.strip(), None
+                        return None, "The AI returned an empty response."
+                    if "error" in data:
+                        return None, data["error"].get("message", "Unknown AI service error")
+                    return None, "Unexpected response from AI service."
 
-    return None, "The AI service is currently busy. Please try again later."
+                # Retry on rate limits and server errors
+                if response.status_code in (429, 500, 502, 503, 504):
+                    wait = 2 ** attempt  # 1s, 2s, 4s
+                    logger.warning(f"Model {model} attempt {attempt+1}/{retries} failed with {response.status_code}. Retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
+
+                # Non-retryable errors (401, 400, etc.) – move to next model immediately
+                try:
+                    error_data = response.json()
+                    error_message = error_data.get("error", {}).get("message", "Unknown error")
+                except Exception:
+                    error_message = response.text
+                logger.error(f"Model {model} error: {error_message} (status {response.status_code})")
+                if response.status_code == 401:
+                    return None, "Invalid OpenRouter API key."  # global failure, stop all
+                # For other errors, break out of retry loop and try next model
+                last_error = f"Model {model} failed: {error_message}"
+                break
+
+            except requests.exceptions.Timeout:
+                if attempt < retries - 1:
+                    wait = 2 ** attempt
+                    logger.warning(f"Model {model} timeout on attempt {attempt+1}. Retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
+                last_error = f"Model {model} timed out after {retries} attempts."
+                # fall through to next model
+            except requests.exceptions.ConnectionError:
+                last_error = f"Could not connect to AI service with model {model}."
+                break  # connection error likely global, stop trying this model and go next
+            except Exception as e:
+                logger.exception(f"Unexpected error with model {model}")
+                last_error = f"Unexpected error with model {model}: {str(e)}"
+                break
+
+        # If we exhausted retries for this model without success, log and move to next
+        if last_error and "timed out" not in last_error and "failed" in last_error:
+            logger.warning(f"Model {model} exhausted retries. Moving to next model.")
+        # else continue
+
+    # If all models failed
+    return None, f"All available models are currently unavailable. Last error: {last_error or 'Unknown'}"
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
@@ -172,19 +207,17 @@ def chat():
 
     return jsonify({"success": True, "reply": reply})
 
-# Health check (optional but useful)
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok"})
-    
+
 @app.route('/')
 def index():
     return send_from_directory('public', 'index.html')
 
 # Vercel serverless handler
-# This is the entry point Vercel uses
 def handler(request):
     return app(request)
-    
+
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=5000)
